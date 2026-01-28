@@ -82,6 +82,7 @@ BONE_HIERARCHY = {
                                     }
                                 }
                             },
+                            # Left arm - slight elbow bend for IK, palm facing down
                             "Shoulder_L": {
                                 "head": (0.05, 0, 1.35),
                                 "tail": (0.15, 0, 1.35),
@@ -90,98 +91,101 @@ BONE_HIERARCHY = {
                                         "head": (0.15, 0, 1.35),
                                         "tail": (0.4, 0, 1.35),
                                         "children": {
+                                            # Elbow has slight forward bend for IK pole targeting
                                             "Arm_Lower_L": {
                                                 "head": (0.4, 0, 1.35),
-                                                "tail": (0.65, 0, 1.35),
+                                                "tail": (0.62, -0.04, 1.32),  # Slight forward (-Y) and down (-Z) bend
                                                 "children": {
+                                                    # Hand with palm facing floor
                                                     "Hand_L": {
-                                                        "head": (0.65, 0, 1.35),
-                                                        "tail": (0.75, 0, 1.35),
+                                                        "head": (0.62, -0.04, 1.32),
+                                                        "tail": (0.72, -0.04, 1.32),
                                                         "children": {
-                                                            # Thumb
+                                                            # Thumb points FORWARD (-Y direction)
                                                             "Thumb_L_1": {
-                                                                "head": (0.68, -0.02, 1.34),
-                                                                "tail": (0.71, -0.03, 1.33),
+                                                                "head": (0.66, -0.06, 1.32),
+                                                                "tail": (0.66, -0.10, 1.32),
                                                                 "children": {
                                                                     "Thumb_L_2": {
-                                                                        "head": (0.71, -0.03, 1.33),
-                                                                        "tail": (0.74, -0.04, 1.32),
+                                                                        "head": (0.66, -0.10, 1.32),
+                                                                        "tail": (0.66, -0.13, 1.32),
                                                                         "children": {
                                                                             "Thumb_L_3": {
-                                                                                "head": (0.74, -0.04, 1.32),
-                                                                                "tail": (0.76, -0.05, 1.31),
+                                                                                "head": (0.66, -0.13, 1.32),
+                                                                                "tail": (0.66, -0.15, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Index
+                                                            # Fingers spread HORIZONTALLY (along X), varied Y for fan spread
+                                                            # Index - front of hand
                                                             "Index_L_1": {
-                                                                "head": (0.75, 0, 1.36),
-                                                                "tail": (0.79, 0, 1.36),
+                                                                "head": (0.72, -0.06, 1.32),
+                                                                "tail": (0.76, -0.06, 1.32),
                                                                 "children": {
                                                                     "Index_L_2": {
-                                                                        "head": (0.79, 0, 1.36),
-                                                                        "tail": (0.82, 0, 1.36),
+                                                                        "head": (0.76, -0.06, 1.32),
+                                                                        "tail": (0.79, -0.06, 1.32),
                                                                         "children": {
                                                                             "Index_L_3": {
-                                                                                "head": (0.82, 0, 1.36),
-                                                                                "tail": (0.84, 0, 1.36),
+                                                                                "head": (0.79, -0.06, 1.32),
+                                                                                "tail": (0.81, -0.06, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Middle
+                                                            # Middle - center, longest finger
                                                             "Middle_L_1": {
-                                                                "head": (0.75, 0, 1.35),
-                                                                "tail": (0.8, 0, 1.35),
+                                                                "head": (0.72, -0.04, 1.32),
+                                                                "tail": (0.77, -0.04, 1.32),
                                                                 "children": {
                                                                     "Middle_L_2": {
-                                                                        "head": (0.8, 0, 1.35),
-                                                                        "tail": (0.84, 0, 1.35),
+                                                                        "head": (0.77, -0.04, 1.32),
+                                                                        "tail": (0.81, -0.04, 1.32),
                                                                         "children": {
                                                                             "Middle_L_3": {
-                                                                                "head": (0.84, 0, 1.35),
-                                                                                "tail": (0.87, 0, 1.35),
+                                                                                "head": (0.81, -0.04, 1.32),
+                                                                                "tail": (0.84, -0.04, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Ring
+                                                            # Ring - back of center
                                                             "Ring_L_1": {
-                                                                "head": (0.75, 0, 1.34),
-                                                                "tail": (0.79, 0, 1.34),
+                                                                "head": (0.72, -0.02, 1.32),
+                                                                "tail": (0.76, -0.02, 1.32),
                                                                 "children": {
                                                                     "Ring_L_2": {
-                                                                        "head": (0.79, 0, 1.34),
-                                                                        "tail": (0.82, 0, 1.34),
+                                                                        "head": (0.76, -0.02, 1.32),
+                                                                        "tail": (0.79, -0.02, 1.32),
                                                                         "children": {
                                                                             "Ring_L_3": {
-                                                                                "head": (0.82, 0, 1.34),
-                                                                                "tail": (0.84, 0, 1.34),
+                                                                                "head": (0.79, -0.02, 1.32),
+                                                                                "tail": (0.81, -0.02, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Pinky
+                                                            # Pinky - back of hand
                                                             "Pinky_L_1": {
-                                                                "head": (0.75, 0, 1.33),
-                                                                "tail": (0.78, 0, 1.33),
+                                                                "head": (0.72, 0, 1.32),
+                                                                "tail": (0.75, 0, 1.32),
                                                                 "children": {
                                                                     "Pinky_L_2": {
-                                                                        "head": (0.78, 0, 1.33),
-                                                                        "tail": (0.8, 0, 1.33),
+                                                                        "head": (0.75, 0, 1.32),
+                                                                        "tail": (0.77, 0, 1.32),
                                                                         "children": {
                                                                             "Pinky_L_3": {
-                                                                                "head": (0.8, 0, 1.33),
-                                                                                "tail": (0.82, 0, 1.33),
+                                                                                "head": (0.77, 0, 1.32),
+                                                                                "tail": (0.79, 0, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
@@ -196,6 +200,7 @@ BONE_HIERARCHY = {
                                     }
                                 }
                             },
+                            # Right arm - mirrored from left, same elbow bend and palm-down orientation
                             "Shoulder_R": {
                                 "head": (-0.05, 0, 1.35),
                                 "tail": (-0.15, 0, 1.35),
@@ -204,98 +209,101 @@ BONE_HIERARCHY = {
                                         "head": (-0.15, 0, 1.35),
                                         "tail": (-0.4, 0, 1.35),
                                         "children": {
+                                            # Elbow has slight forward bend for IK pole targeting
                                             "Arm_Lower_R": {
                                                 "head": (-0.4, 0, 1.35),
-                                                "tail": (-0.65, 0, 1.35),
+                                                "tail": (-0.62, -0.04, 1.32),  # Slight forward (-Y) and down (-Z) bend
                                                 "children": {
+                                                    # Hand with palm facing floor
                                                     "Hand_R": {
-                                                        "head": (-0.65, 0, 1.35),
-                                                        "tail": (-0.75, 0, 1.35),
+                                                        "head": (-0.62, -0.04, 1.32),
+                                                        "tail": (-0.72, -0.04, 1.32),
                                                         "children": {
-                                                            # Thumb
+                                                            # Thumb points FORWARD (-Y direction)
                                                             "Thumb_R_1": {
-                                                                "head": (-0.68, -0.02, 1.34),
-                                                                "tail": (-0.71, -0.03, 1.33),
+                                                                "head": (-0.66, -0.06, 1.32),
+                                                                "tail": (-0.66, -0.10, 1.32),
                                                                 "children": {
                                                                     "Thumb_R_2": {
-                                                                        "head": (-0.71, -0.03, 1.33),
-                                                                        "tail": (-0.74, -0.04, 1.32),
+                                                                        "head": (-0.66, -0.10, 1.32),
+                                                                        "tail": (-0.66, -0.13, 1.32),
                                                                         "children": {
                                                                             "Thumb_R_3": {
-                                                                                "head": (-0.74, -0.04, 1.32),
-                                                                                "tail": (-0.76, -0.05, 1.31),
+                                                                                "head": (-0.66, -0.13, 1.32),
+                                                                                "tail": (-0.66, -0.15, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Index
+                                                            # Fingers spread HORIZONTALLY (along -X), varied Y for fan spread
+                                                            # Index - front of hand
                                                             "Index_R_1": {
-                                                                "head": (-0.75, 0, 1.36),
-                                                                "tail": (-0.79, 0, 1.36),
+                                                                "head": (-0.72, -0.06, 1.32),
+                                                                "tail": (-0.76, -0.06, 1.32),
                                                                 "children": {
                                                                     "Index_R_2": {
-                                                                        "head": (-0.79, 0, 1.36),
-                                                                        "tail": (-0.82, 0, 1.36),
+                                                                        "head": (-0.76, -0.06, 1.32),
+                                                                        "tail": (-0.79, -0.06, 1.32),
                                                                         "children": {
                                                                             "Index_R_3": {
-                                                                                "head": (-0.82, 0, 1.36),
-                                                                                "tail": (-0.84, 0, 1.36),
+                                                                                "head": (-0.79, -0.06, 1.32),
+                                                                                "tail": (-0.81, -0.06, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Middle
+                                                            # Middle - center, longest finger
                                                             "Middle_R_1": {
-                                                                "head": (-0.75, 0, 1.35),
-                                                                "tail": (-0.8, 0, 1.35),
+                                                                "head": (-0.72, -0.04, 1.32),
+                                                                "tail": (-0.77, -0.04, 1.32),
                                                                 "children": {
                                                                     "Middle_R_2": {
-                                                                        "head": (-0.8, 0, 1.35),
-                                                                        "tail": (-0.84, 0, 1.35),
+                                                                        "head": (-0.77, -0.04, 1.32),
+                                                                        "tail": (-0.81, -0.04, 1.32),
                                                                         "children": {
                                                                             "Middle_R_3": {
-                                                                                "head": (-0.84, 0, 1.35),
-                                                                                "tail": (-0.87, 0, 1.35),
+                                                                                "head": (-0.81, -0.04, 1.32),
+                                                                                "tail": (-0.84, -0.04, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Ring
+                                                            # Ring - back of center
                                                             "Ring_R_1": {
-                                                                "head": (-0.75, 0, 1.34),
-                                                                "tail": (-0.79, 0, 1.34),
+                                                                "head": (-0.72, -0.02, 1.32),
+                                                                "tail": (-0.76, -0.02, 1.32),
                                                                 "children": {
                                                                     "Ring_R_2": {
-                                                                        "head": (-0.79, 0, 1.34),
-                                                                        "tail": (-0.82, 0, 1.34),
+                                                                        "head": (-0.76, -0.02, 1.32),
+                                                                        "tail": (-0.79, -0.02, 1.32),
                                                                         "children": {
                                                                             "Ring_R_3": {
-                                                                                "head": (-0.82, 0, 1.34),
-                                                                                "tail": (-0.84, 0, 1.34),
+                                                                                "head": (-0.79, -0.02, 1.32),
+                                                                                "tail": (-0.81, -0.02, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
                                                                     }
                                                                 }
                                                             },
-                                                            # Pinky
+                                                            # Pinky - back of hand
                                                             "Pinky_R_1": {
-                                                                "head": (-0.75, 0, 1.33),
-                                                                "tail": (-0.78, 0, 1.33),
+                                                                "head": (-0.72, 0, 1.32),
+                                                                "tail": (-0.75, 0, 1.32),
                                                                 "children": {
                                                                     "Pinky_R_2": {
-                                                                        "head": (-0.78, 0, 1.33),
-                                                                        "tail": (-0.8, 0, 1.33),
+                                                                        "head": (-0.75, 0, 1.32),
+                                                                        "tail": (-0.77, 0, 1.32),
                                                                         "children": {
                                                                             "Pinky_R_3": {
-                                                                                "head": (-0.8, 0, 1.33),
-                                                                                "tail": (-0.82, 0, 1.33),
+                                                                                "head": (-0.77, 0, 1.32),
+                                                                                "tail": (-0.79, 0, 1.32),
                                                                                 "children": {}
                                                                             }
                                                                         }
@@ -316,34 +324,38 @@ BONE_HIERARCHY = {
                         "head": (0, 0, 0.9),
                         "tail": (0, 0, 0.85),
                         "children": {
+                            # Left leg - slight forward bend at knee for IK pole targeting
                             "Leg_Upper_L": {
                                 "head": (0.1, 0, 0.85),
-                                "tail": (0.1, 0, 0.45),
+                                "tail": (0.1, -0.02, 0.45),  # Slight forward tilt
                                 "children": {
+                                    # Knee bends backward (+Y) for proper IK pole direction
                                     "Leg_Lower_L": {
-                                        "head": (0.1, 0, 0.45),
-                                        "tail": (0.1, 0, 0.08),
+                                        "head": (0.1, -0.02, 0.45),
+                                        "tail": (0.1, 0.03, 0.08),  # Slight backward bend
                                         "children": {
                                             "Foot_L": {
-                                                "head": (0.1, 0, 0.08),
-                                                "tail": (0.1, -0.12, 0.02),
+                                                "head": (0.1, 0.03, 0.08),
+                                                "tail": (0.1, -0.10, 0.02),
                                                 "children": {}
                                             }
                                         }
                                     }
                                 }
                             },
+                            # Right leg - mirrored knee bend
                             "Leg_Upper_R": {
                                 "head": (-0.1, 0, 0.85),
-                                "tail": (-0.1, 0, 0.45),
+                                "tail": (-0.1, -0.02, 0.45),  # Slight forward tilt
                                 "children": {
+                                    # Knee bends backward (+Y) for proper IK pole direction
                                     "Leg_Lower_R": {
-                                        "head": (-0.1, 0, 0.45),
-                                        "tail": (-0.1, 0, 0.08),
+                                        "head": (-0.1, -0.02, 0.45),
+                                        "tail": (-0.1, 0.03, 0.08),  # Slight backward bend
                                         "children": {
                                             "Foot_R": {
-                                                "head": (-0.1, 0, 0.08),
-                                                "tail": (-0.1, -0.12, 0.02),
+                                                "head": (-0.1, 0.03, 0.08),
+                                                "tail": (-0.1, -0.10, 0.02),
                                                 "children": {}
                                             }
                                         }
