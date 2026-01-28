@@ -19,13 +19,13 @@
 
 bl_info = {
     "name": "Puppet Mode",
-    "author": "Your Name",
+    "author": "8bitbyadog",
     "version": (0, 1, 0),
-    "blender": (4, 0, 0),
+    "blender": (4, 0, 0),  # Minimum version; tested on 5.0
     "location": "View3D > Sidebar > Puppet Mode",
     "description": "Real-time 2D character puppeteering with Grease Pencil",
     "warning": "Early development - Phase 1",
-    "doc_url": "",
+    "doc_url": "https://github.com/8bitbyadog/puppet-mode",
     "category": "Animation",
 }
 
