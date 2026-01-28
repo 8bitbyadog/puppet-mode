@@ -20,11 +20,11 @@
 bl_info = {
     "name": "Puppet Mode",
     "author": "8bitbyadog",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),  # Phase 1c
     "blender": (4, 0, 0),  # Minimum version; tested on 5.0
     "location": "View3D > Sidebar > Puppet Mode",
     "description": "Real-time 2D character puppeteering with Grease Pencil",
-    "warning": "Early development - Phase 1",
+    "warning": "Early development - Phase 1c",
     "doc_url": "https://github.com/8bitbyadog/puppet-mode",
     "category": "Animation",
 }
@@ -37,12 +37,18 @@ bl_info = {
 import bpy
 
 # Import submodules
-# Note: We use relative imports because this is a package
 from . import constants
-from .operators import operator_classes
+from .core import properties
+from .core import rig_builder
+
+# Import classes for registration
 from .operators.create_puppet import PUPPET_OT_create_puppet
-from .panels import panel_classes
-from .panels.main_panel import PUPPET_PT_main_panel, PUPPET_OT_select_gp
+from .operators.draw_part import PUPPET_OT_draw_part, PUPPET_OT_set_rotation
+from .panels.main_panel import (
+    PUPPET_PT_main_panel,
+    PUPPET_OT_select_puppet,
+    PUPPET_OT_select_gp,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -53,6 +59,9 @@ from .panels.main_panel import PUPPET_PT_main_panel, PUPPET_OT_select_gp
 classes = [
     # Operators
     PUPPET_OT_create_puppet,
+    PUPPET_OT_draw_part,
+    PUPPET_OT_set_rotation,
+    PUPPET_OT_select_puppet,
     PUPPET_OT_select_gp,
     # Panels
     PUPPET_PT_main_panel,
@@ -61,6 +70,10 @@ classes = [
 
 def register():
     """Register all add-on classes with Blender."""
+    # Register properties first (they're needed by panels)
+    properties.register()
+
+    # Register all classes
     for cls in classes:
         bpy.utils.register_class(cls)
 
@@ -69,8 +82,12 @@ def register():
 
 def unregister():
     """Unregister all add-on classes from Blender."""
+    # Unregister classes
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+
+    # Unregister properties last
+    properties.unregister()
 
     print("Puppet Mode unregistered")
 
