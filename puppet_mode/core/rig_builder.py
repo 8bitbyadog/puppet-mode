@@ -2,6 +2,7 @@
 # ============================================================================
 # Functions for creating the puppet armature and Grease Pencil object.
 # This is the core of Phase 1b - generating the full puppet structure.
+# Optimized for Blender's 2D Animation workflow.
 # ============================================================================
 
 import bpy
@@ -22,6 +23,56 @@ from ..constants import (
     LAYER_TO_BONE,
     get_all_layer_names,
 )
+
+
+# ----------------------------------------------------------------------------
+# 2D ANIMATION MODE SETUP
+# ----------------------------------------------------------------------------
+
+def setup_2d_view(context):
+    """
+    Configure the 3D viewport for 2D animation work.
+    - Sets view to Front Orthographic
+    - Frames the puppet in view
+    """
+    # Get the 3D viewport area
+    for area in context.screen.areas:
+        if area.type == 'VIEW_3D':
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    # Set to Front Orthographic view
+                    space.region_3d.view_perspective = 'ORTHO'
+                    # Front view = looking down -Y axis
+                    # Rotation for front view (looking at XZ plane)
+                    from mathutils import Quaternion
+                    import math
+                    # Front view quaternion (90 degrees around X)
+                    space.region_3d.view_rotation = Quaternion((math.cos(math.pi/4), math.sin(math.pi/4), 0, 0))
+                    break
+            break
+
+
+def frame_puppet_in_view(context, armature_obj):
+    """
+    Frame the view to show the full puppet.
+    """
+    # Select the armature to frame it
+    bpy.ops.object.select_all(action='DESELECT')
+    armature_obj.select_set(True)
+    context.view_layer.objects.active = armature_obj
+
+    # Frame selected in all 3D views
+    for area in context.screen.areas:
+        if area.type == 'VIEW_3D':
+            for region in area.regions:
+                if region.type == 'WINDOW':
+                    override = context.copy()
+                    override['area'] = area
+                    override['region'] = region
+                    with context.temp_override(**override):
+                        bpy.ops.view3d.view_selected(use_all_regions=False)
+                    break
+            break
 
 
 # ----------------------------------------------------------------------------
@@ -126,19 +177,26 @@ def _build_bones_recursive(armature_data, hierarchy, parent_bone):
 
 def _configure_armature_display(armature_obj):
     """
-    Configure the armature to display nicely as a drawing guide.
-    - Stick display mode for clean visibility
+    Configure the armature to display nicely as a 2D drawing guide.
+    - Wire display mode for clear visibility without obscuring drawing
     - In Front enabled so bones show through GP strokes
+    - Semi-transparent appearance
     - Custom colors for easy identification
     """
     armature = armature_obj.data
 
-    # Display settings
-    armature.display_type = 'STICK'  # Clean, minimal bone display
+    # Display settings optimized for 2D drawing guide
+    armature.display_type = 'WIRE'  # Wire is cleaner for 2D tracing
     armature_obj.show_in_front = True  # Always visible as drawing guide
+
+    # Make armature semi-transparent so it doesn't obscure drawing
+    armature_obj.show_wire = True
 
     # Enable bone colors (available in Blender 4.0+)
     armature.show_bone_colors = True
+
+    # Set a subtle color for the armature (light blue guide color)
+    armature_obj.color = (0.2, 0.6, 1.0, 0.5)  # Light blue, 50% alpha
 
 
 # ----------------------------------------------------------------------------
@@ -148,6 +206,7 @@ def _configure_armature_display(armature_obj):
 def create_grease_pencil(name, context):
     """
     Create the Grease Pencil object with all layers defined in GP_LAYER_STRUCTURE.
+    Includes default materials ready for 2D drawing.
 
     Args:
         name: Base name for the GP object (e.g., "Puppet_001")
@@ -157,9 +216,46 @@ def create_grease_pencil(name, context):
         The created GP object
     """
     if is_gp_v3():
-        return _create_gp_v3(name, context)
+        gp_obj = _create_gp_v3(name, context)
     else:
-        return _create_gp_legacy(name, context)
+        gp_obj = _create_gp_legacy(name, context)
+
+    # Add default drawing materials
+    _setup_gp_materials(gp_obj)
+
+    return gp_obj
+
+
+def _setup_gp_materials(gp_obj):
+    """
+    Set up default materials for the Grease Pencil object.
+    Creates a basic stroke material ready for drawing.
+    """
+    # Create a default black stroke material
+    mat_stroke = bpy.data.materials.new(name=f"{gp_obj.name}_Stroke")
+    bpy.data.materials.create_gpencil_data(mat_stroke)
+
+    # Configure stroke material
+    mat_stroke.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)  # Black
+    mat_stroke.grease_pencil.show_stroke = True
+    mat_stroke.grease_pencil.show_fill = False
+
+    # Create a fill material
+    mat_fill = bpy.data.materials.new(name=f"{gp_obj.name}_Fill")
+    bpy.data.materials.create_gpencil_data(mat_fill)
+
+    # Configure fill material
+    mat_fill.grease_pencil.show_stroke = True
+    mat_fill.grease_pencil.show_fill = True
+    mat_fill.grease_pencil.fill_color = (0.8, 0.8, 0.8, 1.0)  # Light gray fill
+    mat_fill.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)  # Black stroke
+
+    # Assign materials to GP object
+    gp_obj.data.materials.append(mat_stroke)
+    gp_obj.data.materials.append(mat_fill)
+
+    # Set stroke as active material (index 0)
+    gp_obj.active_material_index = 0
 
 
 def _create_gp_legacy(name, context):
@@ -235,12 +331,14 @@ def _create_gp_v3(name, context):
 def create_puppet(context, base_name="Puppet"):
     """
     Main entry point: Create a complete puppet with armature and GP object.
+    Optimized for Blender's 2D Animation workflow.
 
     This creates:
-    1. A Grease Pencil object with all drawable layers
-    2. An armature with the full bone hierarchy
+    1. A Grease Pencil object with all drawable layers and default materials
+    2. An armature with the full bone hierarchy (configured as 2D drawing guide)
     3. Parents the GP object to the armature
     4. Stores custom properties for puppet management
+    5. Sets up the view for 2D animation (Front Orthographic)
 
     Args:
         context: Blender context
@@ -259,7 +357,7 @@ def create_puppet(context, base_name="Puppet"):
     # Create the armature (this will be the "master" object)
     armature_obj = create_armature(puppet_name, context)
 
-    # Create the Grease Pencil object
+    # Create the Grease Pencil object (includes default materials)
     gp_obj = create_grease_pencil(puppet_name, context)
 
     # Parent GP to armature
@@ -274,13 +372,26 @@ def create_puppet(context, base_name="Puppet"):
     # Store reference on GP object back to armature
     gp_obj["puppet_rig"] = armature_obj.name
 
-    # Select both objects, make armature active
-    gp_obj.select_set(True)
-    armature_obj.select_set(True)
-    context.view_layer.objects.active = armature_obj
-
     # Position in 3D view (at world origin, facing -Y)
     armature_obj.location = (0, 0, 0)
+
+    # ----- 2D ANIMATION MODE SETUP -----
+
+    # Set view to Front Orthographic (standard 2D animation view)
+    setup_2d_view(context)
+
+    # Select GP object and make it active (ready to draw)
+    bpy.ops.object.select_all(action='DESELECT')
+    gp_obj.select_set(True)
+    context.view_layer.objects.active = gp_obj
+
+    # Frame the puppet in view
+    frame_puppet_in_view(context, armature_obj)
+
+    # Re-select GP as active (for immediate drawing)
+    bpy.ops.object.select_all(action='DESELECT')
+    gp_obj.select_set(True)
+    context.view_layer.objects.active = gp_obj
 
     return gp_obj, armature_obj
 
