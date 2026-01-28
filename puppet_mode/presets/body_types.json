@@ -1,0 +1,65 @@
+{
+    "comment": "Body type presets for Phase 1.5 - proportions sliders",
+    "presets": {
+        "Standard": {
+            "head_size": 0.5,
+            "neck_length": 0.5,
+            "torso_length": 0.5,
+            "shoulder_width": 0.5,
+            "arm_length": 0.5,
+            "hand_size": 0.5,
+            "hip_width": 0.5,
+            "leg_length": 0.5
+        },
+        "Chibi": {
+            "head_size": 0.8,
+            "neck_length": 0.2,
+            "torso_length": 0.3,
+            "shoulder_width": 0.4,
+            "arm_length": 0.3,
+            "hand_size": 0.6,
+            "hip_width": 0.4,
+            "leg_length": 0.3
+        },
+        "Heroic": {
+            "head_size": 0.4,
+            "neck_length": 0.5,
+            "torso_length": 0.6,
+            "shoulder_width": 0.8,
+            "arm_length": 0.6,
+            "hand_size": 0.5,
+            "hip_width": 0.5,
+            "leg_length": 0.6
+        },
+        "Lanky": {
+            "head_size": 0.4,
+            "neck_length": 0.7,
+            "torso_length": 0.7,
+            "shoulder_width": 0.3,
+            "arm_length": 0.8,
+            "hand_size": 0.4,
+            "hip_width": 0.3,
+            "leg_length": 0.8
+        },
+        "Squat": {
+            "head_size": 0.6,
+            "neck_length": 0.2,
+            "torso_length": 0.4,
+            "shoulder_width": 0.7,
+            "arm_length": 0.3,
+            "hand_size": 0.5,
+            "hip_width": 0.7,
+            "leg_length": 0.3
+        },
+        "Stylized Hands": {
+            "head_size": 0.5,
+            "neck_length": 0.5,
+            "torso_length": 0.5,
+            "shoulder_width": 0.5,
+            "arm_length": 0.5,
+            "hand_size": 0.8,
+            "hip_width": 0.5,
+            "leg_length": 0.5
+        }
+    }
+}
