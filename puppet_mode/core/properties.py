@@ -179,6 +179,7 @@ def is_layer_drawn(gp_obj, layer_name):
     """
     Check if a GP layer has any strokes (has been drawn on).
     Returns True if the layer exists and has content.
+    Handles both legacy GP and GP v3 (Blender 5.0+).
     """
     if not gp_obj or not gp_obj.data:
         return False
@@ -190,10 +191,39 @@ def is_layer_drawn(gp_obj, layer_name):
     if not layer:
         return False
 
-    # Check if any frame has strokes
-    for frame in layer.frames:
-        if hasattr(frame, 'strokes') and len(frame.strokes) > 0:
-            return True
+    # GP v3 (Blender 5.0+) uses a different structure
+    # Try multiple approaches to detect content
+
+    # Method 1: Check frames.strokes (legacy GP)
+    if hasattr(layer, 'frames'):
+        for frame in layer.frames:
+            if hasattr(frame, 'strokes') and len(frame.strokes) > 0:
+                return True
+            # GP v3 might use 'drawing' instead
+            if hasattr(frame, 'drawing'):
+                drawing = frame.drawing
+                if drawing and hasattr(drawing, 'strokes') and len(drawing.strokes) > 0:
+                    return True
+
+    # Method 2: Check if layer has any drawings (GP v3)
+    if hasattr(layer, 'current_frame'):
+        frame = layer.current_frame
+        if frame:
+            if hasattr(frame, 'strokes') and len(frame.strokes) > 0:
+                return True
+            if hasattr(frame, 'drawing'):
+                drawing = frame.drawing
+                if drawing and hasattr(drawing, 'strokes') and len(drawing.strokes) > 0:
+                    return True
+
+    # Method 3: Direct drawing access (some GP v3 versions)
+    if hasattr(gp_obj.data, 'drawings'):
+        # GP v3 stores drawings separately
+        for drawing in gp_obj.data.drawings:
+            if hasattr(drawing, 'strokes') and len(drawing.strokes) > 0:
+                # This drawing has content, but we'd need to check if it's linked to our layer
+                # For simplicity, we'll use frame-based checking above
+                pass
 
     return False
 
@@ -209,11 +239,10 @@ def count_drawn_layers(gp_obj):
     drawn = 0
     total = len(gp_obj.data.layers)
 
+    # Use is_layer_drawn for consistent checking
     for layer in gp_obj.data.layers:
-        for frame in layer.frames:
-            if hasattr(frame, 'strokes') and len(frame.strokes) > 0:
-                drawn += 1
-                break
+        if is_layer_drawn(gp_obj, layer.name):
+            drawn += 1
 
     return drawn, total
 

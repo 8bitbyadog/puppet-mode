@@ -11,6 +11,17 @@ from bpy.props import StringProperty
 from ..core.properties import get_current_layer_name
 
 
+def get_gp_object_type():
+    """
+    Get the correct GP object type string for this Blender version.
+    Blender 5.0+ uses 'GREASEPENCIL', older versions use 'GPENCIL'.
+    """
+    # Check Blender version
+    if bpy.app.version >= (5, 0, 0):
+        return 'GREASEPENCIL'
+    return 'GPENCIL'
+
+
 class PUPPET_OT_draw_part(Operator):
     """Activate the selected body part layer and enter Grease Pencil Draw mode"""
 
@@ -30,8 +41,13 @@ class PUPPET_OT_draw_part(Operator):
     def poll(cls, context):
         """Check if we can execute (need an active puppet)."""
         obj = context.active_object
+        gp_type = get_gp_object_type()
+
         if obj and obj.type == 'ARMATURE' and obj.get("is_puppet"):
             return True
+        if obj and obj.type == gp_type and obj.get("puppet_rig"):
+            return True
+        # Also check for legacy type
         if obj and obj.type == 'GPENCIL' and obj.get("puppet_rig"):
             return True
         return False
@@ -50,7 +66,7 @@ class PUPPET_OT_draw_part(Operator):
         else:
             layer_name = get_current_layer_name(context)
 
-        # Find and activate the layer
+        # Find the layer
         gp_data = gp_obj.data
         layer = gp_data.layers.get(layer_name)
 
@@ -58,9 +74,12 @@ class PUPPET_OT_draw_part(Operator):
             self.report({'WARNING'}, f"Layer '{layer_name}' not found")
             return {'CANCELLED'}
 
-        # Make the layer visible and active
-        layer.hide = False
-        gp_data.layers.active = layer
+        # Exit any current mode first to ensure clean state
+        if context.active_object and context.active_object.mode != 'OBJECT':
+            try:
+                bpy.ops.object.mode_set(mode='OBJECT')
+            except:
+                pass
 
         # Select the GP object and make it active
         for obj in bpy.data.objects:
@@ -68,28 +87,39 @@ class PUPPET_OT_draw_part(Operator):
         gp_obj.select_set(True)
         context.view_layer.objects.active = gp_obj
 
+        # Hide all layers except the target one (so user draws on correct layer)
+        for lyr in gp_data.layers:
+            lyr.hide = (lyr.name != layer_name)
+
+        # Make the target layer active
+        layer.hide = False
+        layer.lock = False  # Ensure it's not locked
+        gp_data.layers.active = layer
+
         # Enter Draw mode
-        # Blender 5.0+ uses PAINT_GREASE_PENCIL, older versions use PAINT_GPENCIL
-        try:
-            # Try Blender 5.0+ mode name first
-            bpy.ops.object.mode_set(mode='PAINT_GREASE_PENCIL')
-        except TypeError:
-            try:
-                # Fallback to older mode name
-                bpy.ops.object.mode_set(mode='PAINT_GPENCIL')
-            except:
-                self.report({'INFO'}, f"Activated layer '{layer_name}' - enter Draw mode manually (press D)")
-                return {'FINISHED'}
+        self._enter_draw_mode(context, layer_name)
 
         self.report({'INFO'}, f"Drawing on: {layer_name}")
         return {'FINISHED'}
 
+    def _enter_draw_mode(self, context, layer_name):
+        """Enter GP draw mode, handling version differences."""
+        # Blender 5.0+ uses PAINT_GREASE_PENCIL, older versions use PAINT_GPENCIL
+        try:
+            bpy.ops.object.mode_set(mode='PAINT_GREASE_PENCIL')
+        except TypeError:
+            try:
+                bpy.ops.object.mode_set(mode='PAINT_GPENCIL')
+            except Exception as e:
+                print(f"Puppet Mode: Could not enter draw mode: {e}")
+
     def _get_gp_object(self, context):
         """Find the GP object for the active puppet."""
         obj = context.active_object
+        gp_type = get_gp_object_type()
 
         # If GP object is selected, use it
-        if obj and obj.type == 'GPENCIL' and obj.get("puppet_rig"):
+        if obj and obj.type in (gp_type, 'GPENCIL') and obj.get("puppet_rig"):
             return obj
 
         # If armature is selected, find its GP object
@@ -97,6 +127,11 @@ class PUPPET_OT_draw_part(Operator):
             gp_name = obj.get("puppet_gp")
             if gp_name and gp_name in bpy.data.objects:
                 return bpy.data.objects[gp_name]
+
+        # Search all objects for a puppet GP
+        for o in bpy.data.objects:
+            if o.type in (gp_type, 'GPENCIL') and o.get("puppet_rig"):
+                return o
 
         return None
 
