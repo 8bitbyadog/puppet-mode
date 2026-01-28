@@ -29,25 +29,33 @@ from ..constants import (
 # 2D ANIMATION MODE SETUP
 # ----------------------------------------------------------------------------
 
+def deselect_all_objects():
+    """
+    Deselect all objects without using operators (context-safe).
+    """
+    for obj in bpy.data.objects:
+        obj.select_set(False)
+
+
 def setup_2d_view(context):
     """
     Configure the 3D viewport for 2D animation work.
     - Sets view to Front Orthographic
-    - Frames the puppet in view
     """
-    # Get the 3D viewport area
+    from mathutils import Quaternion
+    import math
+
+    # Get the 3D viewport area and configure it
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
             for space in area.spaces:
                 if space.type == 'VIEW_3D':
                     # Set to Front Orthographic view
                     space.region_3d.view_perspective = 'ORTHO'
-                    # Front view = looking down -Y axis
-                    # Rotation for front view (looking at XZ plane)
-                    from mathutils import Quaternion
-                    import math
-                    # Front view quaternion (90 degrees around X)
-                    space.region_3d.view_rotation = Quaternion((math.cos(math.pi/4), math.sin(math.pi/4), 0, 0))
+                    # Front view quaternion (90 degrees around X axis)
+                    space.region_3d.view_rotation = Quaternion(
+                        (math.cos(math.pi/4), math.sin(math.pi/4), 0, 0)
+                    )
                     break
             break
 
@@ -55,22 +63,27 @@ def setup_2d_view(context):
 def frame_puppet_in_view(context, armature_obj):
     """
     Frame the view to show the full puppet.
+    Uses direct view manipulation to avoid context issues.
     """
-    # Select the armature to frame it
-    bpy.ops.object.select_all(action='DESELECT')
-    armature_obj.select_set(True)
-    context.view_layer.objects.active = armature_obj
+    # Calculate bounding box of armature to frame it
+    # Get the armature's bounding box center and size
+    bbox_center = armature_obj.location
 
-    # Frame selected in all 3D views
+    # Estimate view distance based on armature size (puppet is ~2 units tall)
+    view_distance = 3.0
+
+    # Set view location and distance in all 3D viewports
     for area in context.screen.areas:
         if area.type == 'VIEW_3D':
-            for region in area.regions:
-                if region.type == 'WINDOW':
-                    override = context.copy()
-                    override['area'] = area
-                    override['region'] = region
-                    with context.temp_override(**override):
-                        bpy.ops.view3d.view_selected(use_all_regions=False)
+            for space in area.spaces:
+                if space.type == 'VIEW_3D':
+                    # Set the view to look at the puppet center
+                    space.region_3d.view_location = (
+                        bbox_center.x,
+                        bbox_center.y,
+                        bbox_center.z + 1.0  # Center on middle of puppet (it's ~2 units tall)
+                    )
+                    space.region_3d.view_distance = view_distance
                     break
             break
 
@@ -230,6 +243,24 @@ def _setup_gp_materials(gp_obj):
     """
     Set up default materials for the Grease Pencil object.
     Creates a basic stroke material ready for drawing.
+    Handles both legacy GP and GP v3 (Blender 4.3+/5.0+).
+    """
+    try:
+        # Try legacy GP material setup (Blender 4.0-4.2)
+        if hasattr(bpy.data.materials, 'create_gpencil_data'):
+            _setup_gp_materials_legacy(gp_obj)
+        else:
+            # GP v3 in Blender 5.0+ may not need separate material setup
+            # The GP object should work with standard materials
+            _setup_gp_materials_v3(gp_obj)
+    except Exception as e:
+        # If material setup fails, just skip it - user can add materials manually
+        print(f"Puppet Mode: Could not set up GP materials: {e}")
+
+
+def _setup_gp_materials_legacy(gp_obj):
+    """
+    Set up GP materials using legacy API (Blender 4.0-4.2).
     """
     # Create a default black stroke material
     mat_stroke = bpy.data.materials.new(name=f"{gp_obj.name}_Stroke")
@@ -256,6 +287,31 @@ def _setup_gp_materials(gp_obj):
 
     # Set stroke as active material (index 0)
     gp_obj.active_material_index = 0
+
+
+def _setup_gp_materials_v3(gp_obj):
+    """
+    Set up GP materials for Grease Pencil v3 (Blender 4.3+/5.0+).
+    GP v3 uses a different material system.
+    """
+    # In GP v3, materials work differently
+    # Try to create materials that are compatible with the new system
+    try:
+        # Create stroke material
+        mat_stroke = bpy.data.materials.new(name=f"{gp_obj.name}_Stroke")
+
+        # GP v3 may use grease_pencil_v3 or a different attribute
+        if hasattr(mat_stroke, 'grease_pencil'):
+            bpy.data.materials.create_gpencil_data(mat_stroke)
+            mat_stroke.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)
+            mat_stroke.grease_pencil.show_stroke = True
+            mat_stroke.grease_pencil.show_fill = False
+
+        gp_obj.data.materials.append(mat_stroke)
+        gp_obj.active_material_index = 0
+
+    except Exception as e:
+        print(f"Puppet Mode: GP v3 material setup skipped: {e}")
 
 
 def _create_gp_legacy(name, context):
@@ -288,38 +344,44 @@ def _create_gp_legacy(name, context):
 
 def _create_gp_v3(name, context):
     """
-    Create GP object using Grease Pencil v3 API (Blender 4.3+).
-    GP v3 uses a different data structure with layer groups.
+    Create GP object using Grease Pencil v3 API (Blender 4.3+/5.0+).
+    GP v3 uses a different data structure.
     """
-    # In Blender 4.3+, GP uses the new grease_pencil type
-    # The API is: bpy.data.grease_pencils_v3.new() or similar
-    # For now, we attempt the new API with fallback
+    gp_data = None
+    gp_obj = None
 
+    # Try different API approaches for GP v3
+    # Blender 5.0 uses bpy.data.grease_pencils_v3
     try:
-        # Try the v3 API first
-        gp_data = bpy.data.grease_pencils_v3.new(name)
-    except AttributeError:
-        # Fallback: In some 4.3 builds, it might still be grease_pencils
-        # but with the new layer structure
+        if hasattr(bpy.data, 'grease_pencils_v3'):
+            gp_data = bpy.data.grease_pencils_v3.new(name)
+        else:
+            gp_data = bpy.data.grease_pencils.new(name)
+    except Exception as e:
+        print(f"Puppet Mode: GP data creation error: {e}")
+        # Last resort fallback
         gp_data = bpy.data.grease_pencils.new(name)
 
     gp_obj = bpy.data.objects.new(name, gp_data)
     context.collection.objects.link(gp_obj)
 
     # Create layers - GP v3 layer creation
-    # In v3, layers are accessed differently
     all_layers = get_all_layer_names()
 
     for layer_name in reversed(all_layers):
-        # v3 API: gp_data.layers.new(name)
         try:
-            layer = gp_data.layers.new(name=layer_name)
-        except TypeError:
-            # Some versions need different arguments
-            layer = gp_data.layers.new(layer_name)
+            # Try different layer creation signatures
+            if hasattr(gp_data.layers, 'new'):
+                try:
+                    layer = gp_data.layers.new(name=layer_name)
+                except TypeError:
+                    layer = gp_data.layers.new(layer_name)
 
-        # Default visibility: only _Front views visible
-        layer.hide = not layer_name.endswith("_Front")
+                # Default visibility: only _Front views visible
+                if hasattr(layer, 'hide'):
+                    layer.hide = not layer_name.endswith("_Front")
+        except Exception as e:
+            print(f"Puppet Mode: Could not create layer {layer_name}: {e}")
 
     return gp_obj
 
@@ -351,8 +413,8 @@ def create_puppet(context, base_name="Puppet"):
     existing_names = {obj.name for obj in bpy.data.objects}
     puppet_name = get_unique_name(base_name, existing_names)
 
-    # Deselect all objects first
-    bpy.ops.object.select_all(action='DESELECT')
+    # Deselect all objects first (without using operators)
+    deselect_all_objects()
 
     # Create the armature (this will be the "master" object)
     armature_obj = create_armature(puppet_name, context)
@@ -380,16 +442,11 @@ def create_puppet(context, base_name="Puppet"):
     # Set view to Front Orthographic (standard 2D animation view)
     setup_2d_view(context)
 
-    # Select GP object and make it active (ready to draw)
-    bpy.ops.object.select_all(action='DESELECT')
-    gp_obj.select_set(True)
-    context.view_layer.objects.active = gp_obj
-
     # Frame the puppet in view
     frame_puppet_in_view(context, armature_obj)
 
-    # Re-select GP as active (for immediate drawing)
-    bpy.ops.object.select_all(action='DESELECT')
+    # Select GP object and make it active (ready to draw)
+    deselect_all_objects()
     gp_obj.select_set(True)
     context.view_layer.objects.active = gp_obj
 
