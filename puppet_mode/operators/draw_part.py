@@ -69,15 +69,16 @@ class PUPPET_OT_draw_part(Operator):
         context.view_layer.objects.active = gp_obj
 
         # Enter Draw mode
-        # Need to use operator with correct context
+        # Blender 5.0+ uses PAINT_GREASE_PENCIL, older versions use PAINT_GPENCIL
         try:
-            bpy.ops.object.mode_set(mode='PAINT_GPENCIL')
-        except RuntimeError:
-            # Fallback: try switching via gpencil mode
+            # Try Blender 5.0+ mode name first
+            bpy.ops.object.mode_set(mode='PAINT_GREASE_PENCIL')
+        except TypeError:
             try:
-                bpy.ops.gpencil.paintmode_toggle()
+                # Fallback to older mode name
+                bpy.ops.object.mode_set(mode='PAINT_GPENCIL')
             except:
-                self.report({'INFO'}, f"Activated layer '{layer_name}' - enter Draw mode manually")
+                self.report({'INFO'}, f"Activated layer '{layer_name}' - enter Draw mode manually (press D)")
                 return {'FINISHED'}
 
         self.report({'INFO'}, f"Drawing on: {layer_name}")
