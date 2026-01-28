@@ -43,7 +43,12 @@ from .core import rig_builder
 
 # Import classes for registration
 from .operators.create_puppet import PUPPET_OT_create_puppet
-from .operators.draw_part import PUPPET_OT_draw_part, PUPPET_OT_set_rotation
+from .operators.draw_part import (
+    PUPPET_OT_view_part,
+    PUPPET_OT_draw_part,
+    PUPPET_OT_set_rotation,
+    PUPPET_OT_toggle_onion,
+)
 from .panels.main_panel import (
     PUPPET_PT_main_panel,
     PUPPET_OT_select_puppet,
@@ -59,8 +64,10 @@ from .panels.main_panel import (
 classes = [
     # Operators
     PUPPET_OT_create_puppet,
+    PUPPET_OT_view_part,
     PUPPET_OT_draw_part,
     PUPPET_OT_set_rotation,
+    PUPPET_OT_toggle_onion,
     PUPPET_OT_select_puppet,
     PUPPET_OT_select_gp,
     # Panels

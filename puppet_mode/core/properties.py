@@ -9,6 +9,7 @@ from bpy.props import (
     EnumProperty,
     StringProperty,
     BoolProperty,
+    FloatProperty,
     PointerProperty,
 )
 from bpy.types import PropertyGroup
@@ -140,6 +141,22 @@ class PUPPET_PG_selector(PropertyGroup):
         description="Select hand pose (for hands only)",
         items=get_hand_pose_items,
         default=0,
+    )
+
+    # Onion skin settings
+    onion_skin_enabled: BoolProperty(
+        name="Onion Skin",
+        description="Show other rotation views as faint guides",
+        default=False,
+    )
+
+    onion_skin_opacity: FloatProperty(
+        name="Onion Opacity",
+        description="Opacity of onion skin layers",
+        default=0.2,
+        min=0.05,
+        max=0.5,
+        step=5,
     )
 
 

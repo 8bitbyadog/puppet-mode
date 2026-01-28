@@ -5,11 +5,18 @@
 # ============================================================================
 
 from .create_puppet import PUPPET_OT_create_puppet
-from .draw_part import PUPPET_OT_draw_part, PUPPET_OT_set_rotation
+from .draw_part import (
+    PUPPET_OT_view_part,
+    PUPPET_OT_draw_part,
+    PUPPET_OT_set_rotation,
+    PUPPET_OT_toggle_onion,
+)
 
 # List of all operator classes to register
 operator_classes = [
     PUPPET_OT_create_puppet,
+    PUPPET_OT_view_part,
     PUPPET_OT_draw_part,
     PUPPET_OT_set_rotation,
+    PUPPET_OT_toggle_onion,
 ]

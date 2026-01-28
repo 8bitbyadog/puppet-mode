@@ -177,12 +177,28 @@ class PUPPET_PT_main_panel(Panel):
             row.label(text="not drawn")
 
         # --------------------------------------------------------------------
-        # DRAW THIS VIEW BUTTON
+        # ONION SKIN CONTROLS
+        # --------------------------------------------------------------------
+        box = layout.box()
+        row = box.row(align=True)
+        row.prop(props, "onion_skin_enabled", text="Onion Skin", toggle=True)
+        if props.onion_skin_enabled:
+            row.prop(props, "onion_skin_opacity", text="", slider=True)
+
+        # --------------------------------------------------------------------
+        # VIEW / DRAW BUTTONS
         # --------------------------------------------------------------------
         layout.separator()
+
+        # View button (see what you drew)
+        row = layout.row()
+        row.scale_y = 1.5
+        row.operator("puppet.view_part", text="VIEW", icon='HIDE_OFF')
+
+        # Draw button
         row = layout.row()
         row.scale_y = 2.0
-        row.operator("puppet.draw_part", text="DRAW THIS VIEW", icon='GREASEPENCIL')
+        row.operator("puppet.draw_part", text="DRAW", icon='GREASEPENCIL')
 
     def _draw_rotation_grid_full(self, box, context, props, gp_obj):
         """
