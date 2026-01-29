@@ -30,8 +30,8 @@ class PUPPET_OT_create_puppet(Operator):
     def execute(self, context):
         """Execute the operator - create the puppet."""
         try:
-            # Create the puppet
-            gp_obj, armature_obj = create_puppet(context, self.puppet_name)
+            # Create the puppet (armature + parts collection)
+            armature_obj = create_puppet(context, self.puppet_name)
 
             # Report success
             total_parts = get_total_drawable_parts()

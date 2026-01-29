@@ -2,7 +2,11 @@
 # ============================================================================
 # Main UI panel for Puppet Mode.
 # This appears in the 3D View sidebar (N-panel) under "Puppet Mode" tab.
-# Phase 1c: Full body part selector with rotation views.
+#
+# PER-OBJECT ARCHITECTURE: Each body part has its own GP object.
+# - Puppet armature is the root; GP objects are children
+# - "Drawn" means the GP object exists (created on-demand)
+# - Visibility toggles use hide_viewport on GP objects
 # ============================================================================
 
 import bpy
@@ -12,13 +16,15 @@ from ..core.rig_builder import get_puppets_in_scene
 from ..core.properties import (
     get_current_layer_name,
     is_layer_drawn,
-    count_drawn_layers,
+    count_drawn_parts,
 )
 from ..constants import (
     get_total_drawable_parts,
-    ROTATION_VIEWS_FULL,
-    ROTATION_VIEWS_SIMPLE,
-    HAND_ROTATION_VIEWS,
+    get_gp_object_name,
+    CHARACTER_VIEWS,
+    DRAWABLE_PARTS,
+    VIEW_DEPENDENT_PARTS,
+    OUTLINER_PARTS,
     HAND_POSES,
 )
 
@@ -36,8 +42,8 @@ class PUPPET_PT_main_panel(Panel):
         layout = self.layout
         props = context.scene.puppet_selector
 
-        # Get active puppet
-        active_puppet, gp_obj = self._get_active_puppet(context)
+        # Get active puppet armature
+        active_puppet = self._get_active_puppet(context)
 
         # --------------------------------------------------------------------
         # NO PUPPET SELECTED
@@ -49,32 +55,42 @@ class PUPPET_PT_main_panel(Panel):
         # --------------------------------------------------------------------
         # PUPPET HEADER
         # --------------------------------------------------------------------
-        self._draw_puppet_header(layout, active_puppet, gp_obj)
+        self._draw_puppet_header(layout, active_puppet)
 
         # --------------------------------------------------------------------
-        # BODY PART SELECTOR
+        # CHARACTER VIEW SELECTOR (Primary)
         # --------------------------------------------------------------------
-        self._draw_body_selector(layout, context, props, gp_obj)
+        self._draw_view_selector(layout, context, props, active_puppet)
+
+        # --------------------------------------------------------------------
+        # PART SELECTOR (Simplified)
+        # --------------------------------------------------------------------
+        self._draw_part_selector(layout, context, props)
+
+        # --------------------------------------------------------------------
+        # CURRENT SELECTION & ACTIONS
+        # --------------------------------------------------------------------
+        self._draw_action_buttons(layout, context, props, active_puppet)
+
+        # --------------------------------------------------------------------
+        # MINI-OUTLINER (Visibility Controls)
+        # --------------------------------------------------------------------
+        self._draw_mini_outliner(layout, context, props, active_puppet)
 
     def _get_active_puppet(self, context):
-        """Find the active puppet armature and its GP object."""
+        """Find the active puppet armature."""
         obj = context.active_object
-        active_puppet = None
-        gp_obj = None
+        gp_types = ('GPENCIL', 'GREASEPENCIL')
 
         if obj and obj.type == 'ARMATURE' and obj.get("is_puppet"):
-            active_puppet = obj
-            gp_name = obj.get("puppet_gp")
-            if gp_name and gp_name in bpy.data.objects:
-                gp_obj = bpy.data.objects[gp_name]
+            return obj
 
-        elif obj and obj.type == 'GPENCIL' and obj.get("puppet_rig"):
-            gp_obj = obj
+        if obj and obj.type in gp_types and obj.get("puppet_rig"):
             rig_name = obj.get("puppet_rig")
             if rig_name and rig_name in bpy.data.objects:
-                active_puppet = bpy.data.objects[rig_name]
+                return bpy.data.objects[rig_name]
 
-        return active_puppet, gp_obj
+        return None
 
     def _draw_no_puppet(self, layout, context):
         """Draw UI when no puppet is selected."""
@@ -95,7 +111,7 @@ class PUPPET_PT_main_panel(Panel):
         layout.separator()
         layout.operator("puppet.create_puppet", text="Create New Puppet", icon='ADD')
 
-    def _draw_puppet_header(self, layout, puppet, gp_obj):
+    def _draw_puppet_header(self, layout, puppet):
         """Draw puppet name and progress."""
         box = layout.box()
 
@@ -104,180 +120,171 @@ class PUPPET_PT_main_panel(Panel):
         row.label(text=puppet["puppet_name"], icon='ARMATURE_DATA')
 
         # Progress indicator
-        if gp_obj:
-            drawn, total = count_drawn_layers(gp_obj)
-            progress = drawn / total if total > 0 else 0
+        drawn, total = count_drawn_parts(puppet)
+        progress = drawn / total if total > 0 else 0
 
-            row = box.row()
-            row.label(text=f"Parts Drawn: {drawn}/{total}")
+        row = box.row()
+        row.label(text=f"Parts Drawn: {drawn}/{total}")
 
-            # Progress bar
-            row = box.row()
-            row.progress(factor=progress, type='BAR', text=f"{int(progress * 100)}%")
+        # Progress bar
+        row = box.row()
+        row.progress(factor=progress, type='BAR', text=f"{int(progress * 100)}%")
 
-    def _draw_body_selector(self, layout, context, props, gp_obj):
-        """Draw the body part and rotation selector."""
-
-        # --------------------------------------------------------------------
-        # BODY REGION SELECTOR (Face / Body / Hands)
-        # --------------------------------------------------------------------
+    def _draw_view_selector(self, layout, context, props, puppet):
+        """Draw the character view selector (Front, Quarter, Profile)."""
         box = layout.box()
-        box.label(text="Body Region", icon='OUTLINER_OB_ARMATURE')
+        box.label(text="Character View", icon='ORIENTATION_VIEW')
 
+        # View buttons in a row
+        row = box.row(align=True)
+        for view in CHARACTER_VIEWS:
+            # Check if any parts are drawn for this view
+            view_has_content = self._view_has_content(puppet, view)
+
+            # Nicer labels
+            label = view.replace('_', ' ')
+            if view == 'Quarter_L':
+                label = "3/4 L"
+            elif view == 'Quarter_R':
+                label = "3/4 R"
+            elif view == 'Profile_L':
+                label = "Side L"
+            elif view == 'Profile_R':
+                label = "Side R"
+
+            # Icon shows if view has content
+            is_current = (props.character_view == view)
+            if is_current:
+                icon = 'RADIOBUT_ON'
+            elif view_has_content:
+                icon = 'CHECKBOX_HLT'
+            else:
+                icon = 'CHECKBOX_DEHLT'
+
+            op = row.operator("puppet.set_view", text=label, icon=icon, depress=is_current)
+            op.view = view
+
+    def _draw_part_selector(self, layout, context, props):
+        """Draw simplified part selector."""
+        box = layout.box()
+        box.label(text="Select Part to Draw", icon='BONE_DATA')
+
+        # Region filter (optional, collapsed by default)
         row = box.row(align=True)
         row.prop(props, "region", expand=True)
 
-        # --------------------------------------------------------------------
-        # PART SELECTOR (dropdown)
-        # --------------------------------------------------------------------
-        box = layout.box()
-        box.label(text="Select Part", icon='BONE_DATA')
+        # Part dropdown
         box.prop(props, "part", text="")
 
-        # --------------------------------------------------------------------
-        # HAND POSE SELECTOR (only for hands)
-        # --------------------------------------------------------------------
-        if props.region == 'HANDS':
-            box = layout.box()
-            box.label(text="Hand Pose", icon='VIEW_PAN')
+        # Hand pose selector (only for hands)
+        if props.part.startswith('Hand_'):
             row = box.row(align=True)
-            row.prop(props, "hand_pose", expand=True)
+            row.label(text="Pose:")
+            for pose in HAND_POSES:
+                is_current = (props.hand_pose == pose)
+                icon = 'RADIOBUT_ON' if is_current else 'RADIOBUT_OFF'
+                op = row.operator("puppet.set_hand_pose", text=pose, icon=icon, depress=is_current)
+                op.pose = pose
 
-        # --------------------------------------------------------------------
-        # ROTATION VIEW SELECTOR
-        # --------------------------------------------------------------------
-        part = props.part
-
-        # Skip rotation for shape-key parts
-        if part not in ['Eyes', 'Eyebrows', 'Mouth']:
-            box = layout.box()
-            box.label(text="Rotation View", icon='ORIENTATION_VIEW')
-
-            # Determine rotation type
-            if part in ['Head', 'Chest', 'Spine', 'Hips']:
-                self._draw_rotation_grid_full(box, context, props, gp_obj)
-            elif part.startswith('Hand_'):
-                self._draw_rotation_grid_hand(box, context, props, gp_obj)
-            else:
-                self._draw_rotation_grid_simple(box, context, props, gp_obj)
-
-        # --------------------------------------------------------------------
-        # CURRENT SELECTION STATUS
-        # --------------------------------------------------------------------
+    def _draw_action_buttons(self, layout, context, props, puppet):
+        """Draw current selection status and action buttons."""
         box = layout.box()
+
+        # Current selection
         layer_name = get_current_layer_name(context)
-        is_drawn = is_layer_drawn(gp_obj, layer_name) if gp_obj else False
+        is_drawn = is_layer_drawn(puppet, layer_name)
 
         row = box.row()
         if is_drawn:
             row.label(text=f"{layer_name}", icon='CHECKMARK')
-            row.label(text="drawn")
         else:
             row.label(text=f"{layer_name}", icon='LAYER_ACTIVE')
-            row.label(text="not drawn")
 
-        # --------------------------------------------------------------------
-        # ONION SKIN CONTROLS
-        # --------------------------------------------------------------------
-        box = layout.box()
+        # Reference opacity while drawing
         row = box.row(align=True)
-        row.prop(props, "onion_skin_enabled", text="Onion Skin", toggle=True)
-        if props.onion_skin_enabled:
-            row.prop(props, "onion_skin_opacity", text="", slider=True)
+        row.label(text="Ref Opacity:")
+        row.prop(props, "reference_opacity", text="", slider=True)
 
-        # --------------------------------------------------------------------
-        # VIEW / DRAW BUTTONS
-        # --------------------------------------------------------------------
+        # Action buttons
         layout.separator()
 
-        # View button (see what you drew)
+        # View button (show assembled character)
         row = layout.row()
         row.scale_y = 1.5
-        row.operator("puppet.view_part", text="VIEW", icon='HIDE_OFF')
+        row.operator("puppet.view_part", text="VIEW ALL", icon='HIDE_OFF')
 
         # Draw button
         row = layout.row()
         row.scale_y = 2.0
-        row.operator("puppet.draw_part", text="DRAW", icon='GREASEPENCIL')
+        op_text = "DRAW" if not is_drawn else "EDIT"
+        row.operator("puppet.draw_part", text=op_text, icon='GREASEPENCIL')
 
-    def _draw_rotation_grid_full(self, box, context, props, gp_obj):
-        """
-        Draw the 6-direction rotation selector:
-              [3Q_L] [Front] [3Q_R]
-        [Side_L]    [●]    [Side_R]
-                  [Back]
-        """
-        part = props.part
-        current = props.rotation
+    def _draw_mini_outliner(self, layout, context, props, puppet):
+        """Draw mini-outliner with visibility toggles for each part."""
+        box = layout.box()
 
-        # Row 1: 3Q_L, Front, 3Q_R
-        row = box.row(align=True)
-        self._rotation_button(row, "3Q_L", part, current, gp_obj)
-        self._rotation_button(row, "Front", part, current, gp_obj)
-        self._rotation_button(row, "3Q_R", part, current, gp_obj)
+        # Collapsible header
+        row = box.row()
+        row.label(text="Parts (Outliner)", icon='OUTLINER')
 
-        # Row 2: Side_L, (center), Side_R
-        row = box.row(align=True)
-        self._rotation_button(row, "Side_L", part, current, gp_obj)
-        row.label(text="", icon='RADIOBUT_ON' if current else 'RADIOBUT_OFF')
-        self._rotation_button(row, "Side_R", part, current, gp_obj)
+        if not puppet:
+            return
 
-        # Row 3: Back
-        row = box.row(align=True)
-        row.label(text="")
-        self._rotation_button(row, "Back", part, current, gp_obj)
-        row.label(text="")
+        current_view = props.character_view
+        puppet_name = puppet.get("puppet_name", "")
 
-    def _draw_rotation_grid_simple(self, box, context, props, gp_obj):
-        """Draw simple Front/Side selector for arms/legs."""
-        part = props.part
-        current = props.rotation
+        # List each part with visibility toggle and drawn status
+        for part_id, part_label in OUTLINER_PARTS:
+            row = box.row(align=True)
 
-        row = box.row(align=True)
-        self._rotation_button(row, "Front", part, current, gp_obj)
-        self._rotation_button(row, "Side", part, current, gp_obj)
+            # Determine the layer name for this part
+            if part_id in VIEW_DEPENDENT_PARTS:
+                layer_name = f"{part_id}_{current_view}"
+            elif part_id.startswith('Hand_'):
+                layer_name = f"{part_id}_{props.hand_pose}"
+            else:
+                layer_name = part_id
 
-    def _draw_rotation_grid_hand(self, box, context, props, gp_obj):
-        """Draw Front/Back selector for hands."""
-        part = props.part
-        current = props.rotation
+            # Check if drawn (GP object exists)
+            drawn = is_layer_drawn(puppet, layer_name)
 
-        row = box.row(align=True)
-        self._rotation_button(row, "Front", part, current, gp_obj, hand_pose=props.hand_pose)
-        self._rotation_button(row, "Back", part, current, gp_obj, hand_pose=props.hand_pose)
+            # Visibility toggle (only if GP object exists)
+            if drawn:
+                gp_name = get_gp_object_name(puppet_name, layer_name)
+                gp_obj = bpy.data.objects.get(gp_name)
+                if gp_obj:
+                    icon_vis = 'HIDE_OFF' if not gp_obj.hide_viewport else 'HIDE_ON'
+                    op = row.operator("puppet.toggle_layer_visibility", text="", icon=icon_vis)
+                    op.layer_name = layer_name
+                else:
+                    row.label(text="", icon='BLANK1')
+            else:
+                row.label(text="", icon='BLANK1')
 
-    def _rotation_button(self, row, rotation, part, current, gp_obj, hand_pose=None):
-        """
-        Draw a single rotation button.
-        Shows different icons based on:
-        - Current selection (highlighted)
-        - Whether the layer has been drawn (filled vs empty)
-        """
-        # Determine layer name for this rotation
-        if hand_pose:
-            layer_name = f"{part}_{hand_pose}_{rotation}"
-        else:
-            layer_name = f"{part}_{rotation}"
+            # Part label with drawn indicator
+            icon = 'CHECKMARK' if drawn else 'DOT'
+            row.label(text=part_label, icon=icon)
 
-        # Check if drawn
-        is_drawn = is_layer_drawn(gp_obj, layer_name) if gp_obj else False
-        is_current = (rotation == current)
+            # Select button
+            is_selected = (props.part == part_id)
+            icon_sel = 'LAYER_ACTIVE' if is_selected else 'LAYER_USED'
+            op = row.operator("puppet.quick_select_part", text="", icon=icon_sel)
+            op.part = part_id
 
-        # Choose icon
-        if is_current:
-            icon = 'RADIOBUT_ON'
-        elif is_drawn:
-            icon = 'CHECKBOX_HLT'
-        else:
-            icon = 'CHECKBOX_DEHLT'
+    def _view_has_content(self, puppet, view):
+        """Check if any parts have been drawn for a given view."""
+        if not puppet:
+            return False
 
-        # Draw button
-        op = row.operator("puppet.set_rotation", text=rotation.replace('_', ' '), icon=icon, depress=is_current)
-        op.rotation = rotation
+        for part in VIEW_DEPENDENT_PARTS:
+            layer_name = f"{part}_{view}"
+            if is_layer_drawn(puppet, layer_name):
+                return True
+        return False
 
 
 # ----------------------------------------------------------------------------
-# HELPER OPERATOR: Select Puppet
+# HELPER OPERATORS
 # ----------------------------------------------------------------------------
 
 class PUPPET_OT_select_puppet(Operator):
@@ -300,29 +307,102 @@ class PUPPET_OT_select_puppet(Operator):
         return {'FINISHED'}
 
 
-class PUPPET_OT_select_gp(Operator):
-    """Select the Grease Pencil object for the active puppet"""
+class PUPPET_OT_set_view(Operator):
+    """Set the character view angle"""
 
-    bl_idname = "puppet.select_gp"
-    bl_label = "Select GP Object"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_idname = "puppet.set_view"
+    bl_label = "Set View"
+    bl_options = {'REGISTER'}
+
+    view: bpy.props.StringProperty(name="View", default="Front")
 
     def execute(self, context):
+        props = context.scene.puppet_selector
+        props.character_view = self.view
+        # Refresh the view to show parts for this angle
+        bpy.ops.puppet.view_part()
+        return {'FINISHED'}
+
+
+class PUPPET_OT_set_hand_pose(Operator):
+    """Set the hand pose"""
+
+    bl_idname = "puppet.set_hand_pose"
+    bl_label = "Set Hand Pose"
+    bl_options = {'REGISTER'}
+
+    pose: bpy.props.StringProperty(name="Pose", default="Open")
+
+    def execute(self, context):
+        props = context.scene.puppet_selector
+        props.hand_pose = self.pose
+        return {'FINISHED'}
+
+
+class PUPPET_OT_toggle_layer_visibility(Operator):
+    """Toggle visibility of a specific part's GP object"""
+
+    bl_idname = "puppet.toggle_layer_visibility"
+    bl_label = "Toggle Layer Visibility"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    layer_name: bpy.props.StringProperty(name="Layer Name")
+
+    def execute(self, context):
+        # Find puppet armature
         obj = context.active_object
+        armature = None
+        gp_types = ('GPENCIL', 'GREASEPENCIL')
 
         if obj and obj.type == 'ARMATURE' and obj.get("is_puppet"):
-            gp_name = obj.get("puppet_gp")
-            if gp_name and gp_name in bpy.data.objects:
-                gp_obj = bpy.data.objects[gp_name]
-                for o in bpy.data.objects:
-                    o.select_set(False)
-                gp_obj.select_set(True)
-                context.view_layer.objects.active = gp_obj
-                self.report({'INFO'}, f"Selected {gp_name}")
-                return {'FINISHED'}
+            armature = obj
+        elif obj and obj.type in gp_types and obj.get("puppet_rig"):
+            rig_name = obj["puppet_rig"]
+            if rig_name in bpy.data.objects:
+                armature = bpy.data.objects[rig_name]
 
-        self.report({'WARNING'}, "No puppet GP object found")
-        return {'CANCELLED'}
+        if not armature:
+            self.report({'WARNING'}, "No puppet found")
+            return {'CANCELLED'}
+
+        puppet_name = armature.get("puppet_name", "")
+        gp_name = get_gp_object_name(puppet_name, self.layer_name)
+        gp_obj = bpy.data.objects.get(gp_name)
+
+        if gp_obj:
+            gp_obj.hide_viewport = not gp_obj.hide_viewport
+            status = "hidden" if gp_obj.hide_viewport else "visible"
+            self.report({'INFO'}, f"{self.layer_name}: {status}")
+        else:
+            self.report({'WARNING'}, f"No drawing found for {self.layer_name}")
+
+        return {'FINISHED'}
+
+
+class PUPPET_OT_quick_select_part(Operator):
+    """Quickly select a part from the outliner"""
+
+    bl_idname = "puppet.quick_select_part"
+    bl_label = "Select Part"
+    bl_options = {'REGISTER'}
+
+    part: bpy.props.StringProperty(name="Part")
+
+    def execute(self, context):
+        props = context.scene.puppet_selector
+
+        # Set the region based on part
+        if self.part in ['Head', 'Face_Features', 'Mouth']:
+            props.region = 'FACE'
+        elif self.part.startswith('Hand_'):
+            props.region = 'HANDS'
+        else:
+            props.region = 'BODY'
+
+        # Set the part (needs to happen after region for enum to be valid)
+        props.part = self.part
+
+        return {'FINISHED'}
 
 
 # ----------------------------------------------------------------------------
@@ -332,7 +412,10 @@ class PUPPET_OT_select_gp(Operator):
 classes = [
     PUPPET_PT_main_panel,
     PUPPET_OT_select_puppet,
-    PUPPET_OT_select_gp,
+    PUPPET_OT_set_view,
+    PUPPET_OT_set_hand_pose,
+    PUPPET_OT_toggle_layer_visibility,
+    PUPPET_OT_quick_select_part,
 ]
 
 

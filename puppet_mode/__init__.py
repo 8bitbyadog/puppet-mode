@@ -52,7 +52,10 @@ from .operators.draw_part import (
 from .panels.main_panel import (
     PUPPET_PT_main_panel,
     PUPPET_OT_select_puppet,
-    PUPPET_OT_select_gp,
+    PUPPET_OT_set_view,
+    PUPPET_OT_set_hand_pose,
+    PUPPET_OT_toggle_layer_visibility,
+    PUPPET_OT_quick_select_part,
 )
 
 
@@ -69,7 +72,10 @@ classes = [
     PUPPET_OT_set_rotation,
     PUPPET_OT_toggle_onion,
     PUPPET_OT_select_puppet,
-    PUPPET_OT_select_gp,
+    PUPPET_OT_set_view,
+    PUPPET_OT_set_hand_pose,
+    PUPPET_OT_toggle_layer_visibility,
+    PUPPET_OT_quick_select_part,
     # Panels
     PUPPET_PT_main_panel,
 ]

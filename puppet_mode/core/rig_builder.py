@@ -8,20 +8,10 @@
 import bpy
 from mathutils import Vector
 
-# Import our constants
-import sys
-import os
-
-# Get the parent directory to import constants
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
 from ..constants import (
     BONE_HIERARCHY,
-    GP_LAYER_STRUCTURE,
-    LAYER_TO_BONE,
-    get_all_layer_names,
+    get_gp_object_name,
+    get_y_offset_for_layer,
 )
 
 
@@ -213,177 +203,183 @@ def _configure_armature_display(armature_obj):
 
 
 # ----------------------------------------------------------------------------
-# GREASE PENCIL CREATION
+# COLLECTION MANAGEMENT
 # ----------------------------------------------------------------------------
 
-def create_grease_pencil(name, context):
+def create_puppet_collection(puppet_name, context):
     """
-    Create the Grease Pencil object with all layers defined in GP_LAYER_STRUCTURE.
-    Includes default materials ready for 2D drawing.
+    Create a Blender collection to organize all GP objects for a puppet.
+    Returns the collection.
+    """
+    col_name = f"{puppet_name}_Parts"
+    collection = bpy.data.collections.new(col_name)
+    context.scene.collection.children.link(collection)
+    return collection
+
+
+# ----------------------------------------------------------------------------
+# PER-OBJECT GREASE PENCIL CREATION
+# Each drawable body part gets its own GP object (created on demand).
+# This avoids the Blender 5.0 GP v3 layer-switching bug where drawings
+# disappear when switching active layers within a single GP object.
+# ----------------------------------------------------------------------------
+
+def _get_or_create_shared_material(puppet_name):
+    """
+    Get or create a shared stroke material for a puppet's GP objects.
+    Reuses the same material across all GP objects for consistency.
+    """
+    stroke_name = f"{puppet_name}_Stroke"
+
+    # Reuse existing material if it exists
+    mat = bpy.data.materials.get(stroke_name)
+    if mat:
+        return mat
+
+    # Create new stroke material
+    mat = bpy.data.materials.new(name=stroke_name)
+
+    # Try legacy GP material setup (Blender 4.0-4.2)
+    if hasattr(bpy.data.materials, 'create_gpencil_data'):
+        try:
+            bpy.data.materials.create_gpencil_data(mat)
+            mat.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)
+            mat.grease_pencil.show_stroke = True
+            mat.grease_pencil.show_fill = False
+        except Exception:
+            pass
+
+    return mat
+
+
+def create_gp_for_layer(armature_obj, layer_name, context):
+    """
+    Create a single GP object for one drawable layer.
+    Called on-demand when the user first draws a body part.
+
+    The GP object gets:
+    - One layer (named after the part)
+    - Shared material
+    - Parented to the armature
+    - Y-offset for z-ordering in front ortho view
+    - Added to the puppet's collection
+    - Custom properties for identification
 
     Args:
-        name: Base name for the GP object (e.g., "Puppet_001")
+        armature_obj: The puppet's armature object
+        layer_name: The layer identifier (e.g., "Head_Front", "Face_Features")
         context: Blender context
 
     Returns:
         The created GP object
     """
+    puppet_name = armature_obj["puppet_name"]
+    gp_name = get_gp_object_name(puppet_name, layer_name)
+
+    # Create GP data block
     if is_gp_v3():
-        gp_obj = _create_gp_v3(name, context)
+        try:
+            if hasattr(bpy.data, 'grease_pencils_v3'):
+                gp_data = bpy.data.grease_pencils_v3.new(gp_name)
+            else:
+                gp_data = bpy.data.grease_pencils.new(gp_name)
+        except Exception:
+            gp_data = bpy.data.grease_pencils.new(gp_name)
     else:
-        gp_obj = _create_gp_legacy(name, context)
+        gp_data = bpy.data.grease_pencils.new(gp_name)
 
-    # Add default drawing materials
-    _setup_gp_materials(gp_obj)
+    gp_obj = bpy.data.objects.new(gp_name, gp_data)
 
-    return gp_obj
-
-
-def _setup_gp_materials(gp_obj):
-    """
-    Set up default materials for the Grease Pencil object.
-    Creates a basic stroke material ready for drawing.
-    Handles both legacy GP and GP v3 (Blender 4.3+/5.0+).
-    """
+    # Create the single drawing layer
     try:
-        # Try legacy GP material setup (Blender 4.0-4.2)
-        if hasattr(bpy.data.materials, 'create_gpencil_data'):
-            _setup_gp_materials_legacy(gp_obj)
-        else:
-            # GP v3 in Blender 5.0+ may not need separate material setup
-            # The GP object should work with standard materials
-            _setup_gp_materials_v3(gp_obj)
+        if hasattr(gp_data.layers, 'new'):
+            try:
+                layer = gp_data.layers.new(name=layer_name)
+            except TypeError:
+                layer = gp_data.layers.new(layer_name)
+
+            if hasattr(layer, 'hide'):
+                layer.hide = False
+            if hasattr(layer, 'opacity'):
+                layer.opacity = 1.0
+
+            # Legacy GP needs an initial frame
+            if not is_gp_v3() and hasattr(layer, 'frames'):
+                layer.frames.new(1)
     except Exception as e:
-        # If material setup fails, just skip it - user can add materials manually
-        print(f"Puppet Mode: Could not set up GP materials: {e}")
+        print(f"Puppet Mode: Could not create layer for {layer_name}: {e}")
 
+    # Disable autolock
+    if hasattr(gp_data, 'use_autolock_layers'):
+        gp_data.use_autolock_layers = False
 
-def _setup_gp_materials_legacy(gp_obj):
-    """
-    Set up GP materials using legacy API (Blender 4.0-4.2).
-    """
-    # Create a default black stroke material
-    mat_stroke = bpy.data.materials.new(name=f"{gp_obj.name}_Stroke")
-    bpy.data.materials.create_gpencil_data(mat_stroke)
-
-    # Configure stroke material
-    mat_stroke.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)  # Black
-    mat_stroke.grease_pencil.show_stroke = True
-    mat_stroke.grease_pencil.show_fill = False
-
-    # Create a fill material
-    mat_fill = bpy.data.materials.new(name=f"{gp_obj.name}_Fill")
-    bpy.data.materials.create_gpencil_data(mat_fill)
-
-    # Configure fill material
-    mat_fill.grease_pencil.show_stroke = True
-    mat_fill.grease_pencil.show_fill = True
-    mat_fill.grease_pencil.fill_color = (0.8, 0.8, 0.8, 1.0)  # Light gray fill
-    mat_fill.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)  # Black stroke
-
-    # Assign materials to GP object
-    gp_obj.data.materials.append(mat_stroke)
-    gp_obj.data.materials.append(mat_fill)
-
-    # Set stroke as active material (index 0)
-    gp_obj.active_material_index = 0
-
-
-def _setup_gp_materials_v3(gp_obj):
-    """
-    Set up GP materials for Grease Pencil v3 (Blender 4.3+/5.0+).
-    GP v3 uses a different material system.
-    """
-    # In GP v3, materials work differently
-    # Try to create materials that are compatible with the new system
-    try:
-        # Create stroke material
-        mat_stroke = bpy.data.materials.new(name=f"{gp_obj.name}_Stroke")
-
-        # GP v3 may use grease_pencil_v3 or a different attribute
-        if hasattr(mat_stroke, 'grease_pencil'):
-            bpy.data.materials.create_gpencil_data(mat_stroke)
-            mat_stroke.grease_pencil.color = (0.0, 0.0, 0.0, 1.0)
-            mat_stroke.grease_pencil.show_stroke = True
-            mat_stroke.grease_pencil.show_fill = False
-
-        gp_obj.data.materials.append(mat_stroke)
-        gp_obj.active_material_index = 0
-
-    except Exception as e:
-        print(f"Puppet Mode: GP v3 material setup skipped: {e}")
-
-
-def _create_gp_legacy(name, context):
-    """
-    Create GP object using legacy API (Blender 4.0 - 4.2).
-    """
-    # Create GP data and object
-    gp_data = bpy.data.grease_pencils.new(name)
-    gp_obj = bpy.data.objects.new(name, gp_data)
-
-    # Link to scene
-    context.collection.objects.link(gp_obj)
-
-    # Create all layers from our structure
-    # Layers are created in reverse order because GP layers stack bottom-to-top
-    all_layers = get_all_layer_names()
-    for layer_name in reversed(all_layers):
-        layer = gp_data.layers.new(name=layer_name, set_active=False)
-        # Initialize with one empty frame at frame 1
-        layer.frames.new(1)
-        # Default to hidden except front views
-        layer.hide = not layer_name.endswith("_Front")
-
-    # Set the first layer as active
+    # Set active layer
     if gp_data.layers:
         gp_data.layers.active = gp_data.layers[0]
 
-    return gp_obj
+    # Assign shared material
+    mat = _get_or_create_shared_material(puppet_name)
+    gp_data.materials.append(mat)
+    gp_obj.active_material_index = 0
 
+    # Link to puppet's collection (scene collection as fallback)
+    col_name = armature_obj.get("puppet_collection", "")
+    collection = bpy.data.collections.get(col_name)
+    if collection:
+        collection.objects.link(gp_obj)
+    else:
+        context.collection.objects.link(gp_obj)
 
-def _create_gp_v3(name, context):
-    """
-    Create GP object using Grease Pencil v3 API (Blender 4.3+/5.0+).
-    GP v3 uses a different data structure.
-    """
-    gp_data = None
-    gp_obj = None
+    # Parent to armature
+    gp_obj.parent = armature_obj
 
-    # Try different API approaches for GP v3
-    # Blender 5.0 uses bpy.data.grease_pencils_v3
-    try:
-        if hasattr(bpy.data, 'grease_pencils_v3'):
-            gp_data = bpy.data.grease_pencils_v3.new(name)
-        else:
-            gp_data = bpy.data.grease_pencils.new(name)
-    except Exception as e:
-        print(f"Puppet Mode: GP data creation error: {e}")
-        # Last resort fallback
-        gp_data = bpy.data.grease_pencils.new(name)
+    # Y-offset for z-ordering (more negative = rendered in front)
+    y_offset = get_y_offset_for_layer(layer_name)
+    gp_obj.location = (0, y_offset, 0)
 
-    gp_obj = bpy.data.objects.new(name, gp_data)
-    context.collection.objects.link(gp_obj)
-
-    # Create layers - GP v3 layer creation
-    all_layers = get_all_layer_names()
-
-    for layer_name in reversed(all_layers):
-        try:
-            # Try different layer creation signatures
-            if hasattr(gp_data.layers, 'new'):
-                try:
-                    layer = gp_data.layers.new(name=layer_name)
-                except TypeError:
-                    layer = gp_data.layers.new(layer_name)
-
-                # Default visibility: only _Front views visible
-                if hasattr(layer, 'hide'):
-                    layer.hide = not layer_name.endswith("_Front")
-        except Exception as e:
-            print(f"Puppet Mode: Could not create layer {layer_name}: {e}")
+    # Custom properties for identification
+    gp_obj["puppet_rig"] = armature_obj.name
+    gp_obj["puppet_layer"] = layer_name
 
     return gp_obj
+
+
+def find_or_create_gp_for_layer(armature_obj, layer_name, context):
+    """
+    Find an existing GP object for a layer, or create one on demand.
+    This is the main entry point used by the DRAW operator.
+
+    Args:
+        armature_obj: The puppet's armature object
+        layer_name: The layer identifier (e.g., "Head_Front")
+        context: Blender context
+
+    Returns:
+        The GP object for this layer
+    """
+    puppet_name = armature_obj["puppet_name"]
+    gp_name = get_gp_object_name(puppet_name, layer_name)
+
+    existing = bpy.data.objects.get(gp_name)
+    if existing:
+        return existing
+
+    return create_gp_for_layer(armature_obj, layer_name, context)
+
+
+def get_puppet_gp_objects(armature_obj):
+    """
+    Get all GP objects belonging to a puppet.
+    Returns a list of (gp_obj, layer_name) tuples.
+    """
+    if not armature_obj:
+        return []
+
+    results = []
+    for obj in bpy.data.objects:
+        if obj.get("puppet_rig") == armature_obj.name and obj.get("puppet_layer"):
+            results.append((obj, obj["puppet_layer"]))
+    return results
 
 
 # ----------------------------------------------------------------------------
@@ -392,22 +388,21 @@ def _create_gp_v3(name, context):
 
 def create_puppet(context, base_name="Puppet"):
     """
-    Main entry point: Create a complete puppet with armature and GP object.
-    Optimized for Blender's 2D Animation workflow.
+    Main entry point: Create a puppet with armature and parts collection.
+    GP objects are created on-demand when the user clicks DRAW.
 
     This creates:
-    1. A Grease Pencil object with all drawable layers and default materials
-    2. An armature with the full bone hierarchy (configured as 2D drawing guide)
-    3. Parents the GP object to the armature
-    4. Stores custom properties for puppet management
-    5. Sets up the view for 2D animation (Front Orthographic)
+    1. An armature with the full bone hierarchy (configured as 2D drawing guide)
+    2. A collection to hold GP objects (created later per body part)
+    3. Stores custom properties for puppet management
+    4. Sets up the view for 2D animation (Front Orthographic)
 
     Args:
         context: Blender context
         base_name: Base name for the puppet (will be made unique)
 
     Returns:
-        tuple: (gp_object, armature_object)
+        The created armature object
     """
     # Generate unique name
     existing_names = {obj.name for obj in bpy.data.objects}
@@ -419,20 +414,14 @@ def create_puppet(context, base_name="Puppet"):
     # Create the armature (this will be the "master" object)
     armature_obj = create_armature(puppet_name, context)
 
-    # Create the Grease Pencil object (includes default materials)
-    gp_obj = create_grease_pencil(puppet_name, context)
-
-    # Parent GP to armature
-    gp_obj.parent = armature_obj
+    # Create collection for GP objects (populated on-demand)
+    collection = create_puppet_collection(puppet_name, context)
 
     # Store custom properties on armature to identify as puppet
     armature_obj["is_puppet"] = True
     armature_obj["puppet_name"] = puppet_name
-    armature_obj["puppet_gp"] = gp_obj.name
+    armature_obj["puppet_collection"] = collection.name
     armature_obj["proportions_locked"] = False  # For Phase 1.5
-
-    # Store reference on GP object back to armature
-    gp_obj["puppet_rig"] = armature_obj.name
 
     # Position in 3D view (at world origin, facing -Y)
     armature_obj.location = (0, 0, 0)
@@ -445,12 +434,12 @@ def create_puppet(context, base_name="Puppet"):
     # Frame the puppet in view
     frame_puppet_in_view(context, armature_obj)
 
-    # Select GP object and make it active (ready to draw)
+    # Select armature and make it active
     deselect_all_objects()
-    gp_obj.select_set(True)
-    context.view_layer.objects.active = gp_obj
+    armature_obj.select_set(True)
+    context.view_layer.objects.active = armature_obj
 
-    return gp_obj, armature_obj
+    return armature_obj
 
 
 def get_puppets_in_scene():

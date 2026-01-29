@@ -2,123 +2,71 @@
 # ============================================================================
 # Operators for viewing and drawing on specific body part layers.
 # Includes: Draw This View, View This View, Set Rotation, Onion Skin Toggle
+#
+# PER-OBJECT ARCHITECTURE: Each body part gets its own GP object.
+# This avoids Blender 5.0's GP v3 layer-switching bug where drawings
+# disappear when switching active layers within a single GP object.
+#
+# - VIEW mode: Show ALL drawn GP objects for current view at full opacity
+# - DRAW mode: Select target GP object, show others as faint reference
+# - Drawings persist naturally because each GP object is independent
 # ============================================================================
 
 import bpy
 from bpy.types import Operator
-from bpy.props import StringProperty, BoolProperty, FloatProperty
+from bpy.props import StringProperty, BoolProperty
 
-from ..core.properties import get_current_layer_name
-from ..constants import (
-    ROTATION_VIEWS_FULL,
-    ROTATION_VIEWS_SIMPLE,
-    HAND_ROTATION_VIEWS,
-    HAND_POSES,
-    GP_LAYER_STRUCTURE,
+from ..core.properties import (
+    get_current_layer_name,
+    get_view_layer_names,
 )
 
 
-def get_gp_object_type():
-    """
-    Get the correct GP object type string for this Blender version.
-    Blender 5.0+ uses 'GREASEPENCIL', older versions use 'GPENCIL'.
-    """
-    if bpy.app.version >= (5, 0, 0):
-        return 'GREASEPENCIL'
-    return 'GPENCIL'
-
-
-def get_gp_object_from_context(context):
-    """Find the GP object for the active puppet."""
+def get_puppet_armature(context):
+    """Find the puppet armature from whatever is currently selected."""
     obj = context.active_object
-    gp_type = get_gp_object_type()
+    gp_types = ('GPENCIL', 'GREASEPENCIL')
 
-    # If GP object is selected, use it
-    if obj and obj.type in (gp_type, 'GPENCIL') and obj.get("puppet_rig"):
-        return obj
+    if obj:
+        # Direct armature selection
+        if obj.type == 'ARMATURE' and obj.get("is_puppet"):
+            return obj
 
-    # If armature is selected, find its GP object
-    if obj and obj.type == 'ARMATURE' and obj.get("is_puppet"):
-        gp_name = obj.get("puppet_gp")
-        if gp_name and gp_name in bpy.data.objects:
-            return bpy.data.objects[gp_name]
+        # GP object -> find its armature
+        if obj.type in gp_types and obj.get("puppet_rig"):
+            rig_name = obj["puppet_rig"]
+            if rig_name in bpy.data.objects:
+                return bpy.data.objects[rig_name]
 
-    # Search all objects for a puppet GP
+    # Fallback: search all objects for any puppet armature
     for o in bpy.data.objects:
-        if o.type in (gp_type, 'GPENCIL') and o.get("puppet_rig"):
+        if o.type == 'ARMATURE' and o.get("is_puppet"):
             return o
 
     return None
 
 
-def get_related_rotation_layers(part, current_rotation, hand_pose=None):
-    """
-    Get list of layer names for other rotation views of the same part.
-    Used for onion skinning.
-    """
-    related = []
-
-    # Determine which rotation set this part uses
-    if part in ['Head', 'Chest', 'Spine', 'Hips']:
-        rotations = ROTATION_VIEWS_FULL
-    elif part.startswith('Hand_'):
-        rotations = HAND_ROTATION_VIEWS
-    elif part.startswith(('Arm_', 'Leg_', 'Foot_')):
-        rotations = ROTATION_VIEWS_SIMPLE
-    else:
-        return []
-
-    for rot in rotations:
-        if rot != current_rotation:
-            if hand_pose and part.startswith('Hand_'):
-                related.append(f"{part}_{hand_pose}_{rot}")
-            else:
-                related.append(f"{part}_{rot}")
-
-    return related
-
-
 # ----------------------------------------------------------------------------
-# VIEW THIS VIEW - Show layer without entering draw mode
+# VIEW THIS VIEW - Show ALL drawn parts for current view
 # ----------------------------------------------------------------------------
 
 class PUPPET_OT_view_part(Operator):
-    """Show the selected body part layer (view mode, not draw mode)"""
+    """Show all drawn parts as an assembled character"""
 
     bl_idname = "puppet.view_part"
-    bl_label = "View This View"
-    bl_description = "Show this layer without entering draw mode"
+    bl_label = "View Puppet"
+    bl_description = "Show all drawn parts (assembled character view)"
     bl_options = {'REGISTER', 'UNDO'}
-
-    layer_name: StringProperty(
-        name="Layer Name",
-        description="Specific layer to view (optional)",
-        default="",
-    )
 
     @classmethod
     def poll(cls, context):
-        """Check if we can execute (need an active puppet)."""
-        return get_gp_object_from_context(context) is not None
+        return get_puppet_armature(context) is not None
 
     def execute(self, context):
-        """Show the layer in object mode."""
-        gp_obj = get_gp_object_from_context(context)
-        if not gp_obj:
-            self.report({'ERROR'}, "No puppet GP object found")
-            return {'CANCELLED'}
-
-        # Determine which layer to show
-        if self.layer_name:
-            layer_name = self.layer_name
-        else:
-            layer_name = get_current_layer_name(context)
-
-        gp_data = gp_obj.data
-        layer = gp_data.layers.get(layer_name)
-
-        if not layer:
-            self.report({'WARNING'}, f"Layer '{layer_name}' not found")
+        """Show drawn GP objects for the current view at full opacity."""
+        armature = get_puppet_armature(context)
+        if not armature:
+            self.report({'ERROR'}, "No puppet found")
             return {'CANCELLED'}
 
         # Exit any current mode
@@ -128,54 +76,45 @@ class PUPPET_OT_view_part(Operator):
             except:
                 pass
 
-        # Select the GP object
+        # Get layers relevant to current view + hand pose
+        relevant_layers = get_view_layer_names(context)
+
+        # Show/hide GP objects based on current view
+        from ..core.rig_builder import get_puppet_gp_objects
+        all_gps = get_puppet_gp_objects(armature)
+        shown = 0
+
+        for gp_obj, gp_layer in all_gps:
+            if gp_layer in relevant_layers:
+                gp_obj.hide_viewport = False
+                gp_obj.hide_render = False
+                if gp_obj.data.layers:
+                    gp_obj.data.layers[0].opacity = 1.0
+                shown += 1
+            else:
+                gp_obj.hide_viewport = True
+
+        # Select armature
         for obj in bpy.data.objects:
             obj.select_set(False)
-        gp_obj.select_set(True)
-        context.view_layer.objects.active = gp_obj
+        armature.select_set(True)
+        context.view_layer.objects.active = armature
 
-        # Check if onion skin is enabled
-        props = context.scene.puppet_selector
-        onion_enabled = getattr(props, 'onion_skin_enabled', False)
-        onion_opacity = getattr(props, 'onion_skin_opacity', 0.2)
-
-        # Get related layers for onion skin
-        part = props.part
-        rotation = props.rotation
-        hand_pose = props.hand_pose if props.region == 'HANDS' else None
-        related_layers = get_related_rotation_layers(part, rotation, hand_pose)
-
-        # Set layer visibility
-        for lyr in gp_data.layers:
-            if lyr.name == layer_name:
-                # Target layer: fully visible
-                lyr.hide = False
-                lyr.opacity = 1.0
-            elif onion_enabled and lyr.name in related_layers:
-                # Onion skin layer: visible but faint
-                lyr.hide = False
-                lyr.opacity = onion_opacity
-            else:
-                # Other layers: hidden
-                lyr.hide = True
-
-        # Make target layer active
-        gp_data.layers.active = layer
-
-        self.report({'INFO'}, f"Viewing: {layer_name}")
+        self.report({'INFO'}, f"Viewing {shown} drawn parts")
         return {'FINISHED'}
 
 
 # ----------------------------------------------------------------------------
-# DRAW THIS VIEW - Activate layer and enter draw mode
+# DRAW THIS VIEW - Create/select GP object and enter draw mode
+# Other drawn parts stay visible as reference (separate GP objects)
 # ----------------------------------------------------------------------------
 
 class PUPPET_OT_draw_part(Operator):
-    """Activate the selected body part layer and enter Grease Pencil Draw mode"""
+    """Activate the selected body part and enter Grease Pencil Draw mode"""
 
     bl_idname = "puppet.draw_part"
     bl_label = "Draw This View"
-    bl_description = "Activate this layer and start drawing"
+    bl_description = "Activate this part and start drawing (other parts visible as reference)"
     bl_options = {'REGISTER', 'UNDO'}
 
     layer_name: StringProperty(
@@ -186,80 +125,62 @@ class PUPPET_OT_draw_part(Operator):
 
     @classmethod
     def poll(cls, context):
-        """Check if we can execute (need an active puppet)."""
-        return get_gp_object_from_context(context) is not None
+        return get_puppet_armature(context) is not None
 
     def execute(self, context):
-        """Activate the layer and enter draw mode."""
-        gp_obj = get_gp_object_from_context(context)
-        if not gp_obj:
-            self.report({'ERROR'}, "No puppet GP object found")
+        """Find or create the GP object for this part and enter draw mode."""
+        armature = get_puppet_armature(context)
+        if not armature:
+            self.report({'ERROR'}, "No puppet found")
             return {'CANCELLED'}
 
-        # Determine which layer to activate
+        # Determine target layer
         if self.layer_name:
             layer_name = self.layer_name
         else:
             layer_name = get_current_layer_name(context)
 
-        gp_data = gp_obj.data
-        layer = gp_data.layers.get(layer_name)
+        props = context.scene.puppet_selector
+        ref_opacity = getattr(props, 'reference_opacity', 0.3)
 
-        if not layer:
-            self.report({'WARNING'}, f"Layer '{layer_name}' not found")
-            return {'CANCELLED'}
+        # Get/create the GP object for this part (on-demand creation)
+        from ..core.rig_builder import find_or_create_gp_for_layer, get_puppet_gp_objects
+        target_gp = find_or_create_gp_for_layer(armature, layer_name, context)
 
-        # Exit any current mode first
+        # Get layers relevant to current view
+        relevant_layers = get_view_layer_names(context)
+
+        # Set visibility for all puppet GP objects
+        all_gps = get_puppet_gp_objects(armature)
+        for gp_obj, gp_layer in all_gps:
+            if gp_obj == target_gp:
+                # Target: full opacity, visible
+                gp_obj.hide_viewport = False
+                if gp_obj.data.layers:
+                    gp_obj.data.layers[0].opacity = 1.0
+            elif gp_layer in relevant_layers:
+                # Same view, different part: show as reference
+                gp_obj.hide_viewport = False
+                if gp_obj.data.layers:
+                    gp_obj.data.layers[0].opacity = ref_opacity
+            else:
+                # Different view: hide
+                gp_obj.hide_viewport = True
+
+        # Exit any current mode
         if context.active_object and context.active_object.mode != 'OBJECT':
             try:
                 bpy.ops.object.mode_set(mode='OBJECT')
             except:
                 pass
 
-        # Select the GP object
+        # Select the target GP object
         for obj in bpy.data.objects:
             obj.select_set(False)
-        gp_obj.select_set(True)
-        context.view_layer.objects.active = gp_obj
+        target_gp.select_set(True)
+        context.view_layer.objects.active = target_gp
 
-        # Check if onion skin is enabled
-        props = context.scene.puppet_selector
-        onion_enabled = getattr(props, 'onion_skin_enabled', False)
-        onion_opacity = getattr(props, 'onion_skin_opacity', 0.2)
-
-        # Get related layers for onion skin
-        part = props.part
-        rotation = props.rotation
-        hand_pose = props.hand_pose if props.region == 'HANDS' else None
-        related_layers = get_related_rotation_layers(part, rotation, hand_pose)
-
-        # Set layer visibility
-        for lyr in gp_data.layers:
-            if lyr.name == layer_name:
-                # Target layer: fully visible, unlocked
-                lyr.hide = False
-                lyr.opacity = 1.0
-                lyr.lock = False
-            elif onion_enabled and lyr.name in related_layers:
-                # Onion skin layer: visible but faint and locked
-                lyr.hide = False
-                lyr.opacity = onion_opacity
-                lyr.lock = True  # Prevent drawing on wrong layer
-            else:
-                # Other layers: hidden
-                lyr.hide = True
-
-        # Make target layer active
-        gp_data.layers.active = layer
-
-        # Enter Draw mode
-        self._enter_draw_mode(context)
-
-        self.report({'INFO'}, f"Drawing on: {layer_name}")
-        return {'FINISHED'}
-
-    def _enter_draw_mode(self, context):
-        """Enter GP draw mode, handling version differences."""
+        # Enter paint mode
         try:
             bpy.ops.object.mode_set(mode='PAINT_GREASE_PENCIL')
         except TypeError:
@@ -267,6 +188,9 @@ class PUPPET_OT_draw_part(Operator):
                 bpy.ops.object.mode_set(mode='PAINT_GPENCIL')
             except Exception as e:
                 print(f"Puppet Mode: Could not enter draw mode: {e}")
+
+        self.report({'INFO'}, f"Drawing: {layer_name}")
+        return {'FINISHED'}
 
 
 # ----------------------------------------------------------------------------
@@ -325,9 +249,8 @@ class PUPPET_OT_toggle_onion(Operator):
         # Toggle the setting
         props.onion_skin_enabled = not props.onion_skin_enabled
 
-        # Refresh the view if a puppet is selected
-        gp_obj = get_gp_object_from_context(context)
-        if gp_obj:
+        # Refresh the view if a puppet is active
+        if get_puppet_armature(context):
             bpy.ops.puppet.view_part()
 
         status = "ON" if props.onion_skin_enabled else "OFF"
